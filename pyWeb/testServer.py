@@ -10,6 +10,7 @@ import oopgui
 from easyHTTP import EasyHTTPHandler, EasyHTTPServer, EasyHTTPServerThreaded
 
 Globals = {}
+BASEURL = 'http://vm-opsbuild:8080/'
 
 class TestAppHandler (EasyHTTPHandler):
     def echo (self, req, qstr):
@@ -77,9 +78,13 @@ class TestAppHandler (EasyHTTPHandler):
 
     def save_to_file(self, req, qstr):
         self.oop.update(qstr)
-        self.oop.save_to_file()
-        return self.response(
-                json.dumps("File saved to disk"),
+        if self.oop.save_to_file():
+            print('INSIDE POSITIVE RESPONSE')
+            furl = ''.join((BASEURL, self.oop.ddfname))
+            resp = {'furl':furl,'ddf':self.oop.ddfname}
+            return self.response(json.dumps(resp), self.PlainTextType)
+        else: return self.response(
+                json.dumps("File could not be saved"),
                 self.PlainTextType
             )
 
@@ -90,7 +95,7 @@ class TestAppHandler (EasyHTTPHandler):
         return self.response(
                 json.dumps("Config moved to queue"),
                 self.PlainTextType
-            )
+        )
 
 
 if __name__ == "__main__":

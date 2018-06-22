@@ -30,13 +30,26 @@ function Oopgui(){
         }
     };
 
+    self.setDDF = function() {
+        var fname = prompt('Please enter the file name: ', 'default.ddf');
+        El('ddfname').innerHTML = fname;
+        return fname;
+    };
+
     self.saveDDF = function() {
         function callback(data){
             console.log("In the callback");
+            var link = document.createElement('a');
+            link.href = data['furl'];
+            link.download = data['ddfname'];
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
-
+        fname = El('ddfname');
+        fname.innerHTML = self.setDDF();
         var params = self.createQstr();
-        ajaxCall ('save_to_file', params, callback);
+        ajaxPost ('save_to_file', params, callback);
     };
 
     self.saveDB = function() {
@@ -76,6 +89,13 @@ function Oopgui(){
             if (name == 'keckID') return value;
         }
         return '';
+    };
+
+    self.getProjCodes = function(){
+        function callback(codes){
+        }
+        var keckid = self.getKeckID();
+
     };
 
     self.showFile = function(){
@@ -505,6 +525,7 @@ function Oopgui(){
 
         var params = {
             'keckID':self.checkCookie(),
+            'ddfname':El('ddfname').innerHTML,
             'imgMode':El('imgMode').value,
             'dataset':escape(El('dataset').value),
             'object':escape(El('object').value),
@@ -562,4 +583,5 @@ function Oopgui(){
     El('submitDefs').onclick = self.storeDefs;
     El('saveBtn').onclick = self.saveDDF;
     El('saveDB').onclick = self.saveDB;
+    El('ddfname').onclick = self.setDDF;
 }

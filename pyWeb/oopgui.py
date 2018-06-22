@@ -1,11 +1,12 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as pch
 import matplotlib.ticker as tkr
-import shutil
+import shutil as sh
 import pandas as pd
 import numpy as np
 import urllib.request as url
 import db_conn_mongo as dcm
+from datetime import date
 from random import random
 
 class Oopgui:
@@ -109,6 +110,7 @@ class Oopgui:
         self.boxHeight = 1.28
         self.filters = SpecFilters()
         self.colorList = self.gen_color(1)
+        self.baseurl = 'https://www.keck.hawaii.edu/software/db_api/telSched.php?'
 
         # Observing Parameters
         self.oriX = 0.0
@@ -193,6 +195,11 @@ class Oopgui:
     def gen_color(self, num):
         """
         Martin Ankerl's color generator based on Phi distributions
+
+        @type num: int
+        @param num: Number of colors to produce
+
+        @return returns a list of rgb tuples with values [0,1)
         """
         PHI = 0.618033988749895
         s = 0.5
@@ -215,12 +222,6 @@ class Oopgui:
         @param qdir: absolute directory of the queue folder
         """
         self.queueDir = qdir
-
-    def send_to_queue(self):
-        """
-        Moves the file to the directory set in queueDir
-        """
-        pass
 
     def rescale(self):
         """
@@ -314,6 +315,21 @@ class Oopgui:
             self.yMin = yMinSpec if yMinSpec < yMinImag else yMinImag
             self.yMax = yMaxSpec if yMaxSpec > yMaxImag else yMaxImag
 
+        self.xMin = int(self.xMin)
+        self.xMax = int(self.xMax)
+        self.yMin = int(self.yMin)
+        self.yMax = int(self.yMax)
+
+        self.xMin += self.xMin%2
+        self.xMax += self.xMax%2
+        self.yMin += self.yMin%2
+        self.yMax += self.yMax%2
+
+        if self.xMin < self.yMin: self.yMin = self.xMin
+        else: self.xMin = self.yMin
+        if self.xMax > self.yMax: self.yMax = self.xMax
+        else: self.xMax = self.yMax
+
         # Calculate the difference between min and max
         xDiff = self.xMax - self.xMin
         yDiff = self.yMax - self.yMin
@@ -330,8 +346,8 @@ class Oopgui:
 
         # Add a scale increment to the max so that
         # they don't get cut off by a section
-        self.xMax += gridScale
-        self.yMax += gridScale
+        #self.xMax += gridScale
+        #self.yMax += gridScale
 
         return gridScale
 
@@ -650,8 +666,8 @@ class Oopgui:
             if self.skyPattern == 'Box9':
                 for i in range(9):
                     self.ax.add_patch(self.add_sky_box(
-                            self.offDefs[self.skyPattern][0][0],
-                            self.offDefs[self.skyPattern][0][1],
+                            self.offDefs[self.skyPattern][i][0],
+                            self.offDefs[self.skyPattern][i][1],
                             self.objFrames1*self.objFrames2+i))
         # Check if the mode takes an image integration
         if self.mode in ['imag','both']:
@@ -659,14 +675,14 @@ class Oopgui:
             if self.objPattern == 'Box9':
                 for i in range(9):
                     self.ax.add_patch(self.add_obj_diamond(
-                            self.offDefs[self.objPattern][0][0],
-                            self.offDefs[self.objPattern][0][1],
+                            self.offDefs[self.objPattern][i][0],
+                            self.offDefs[self.objPattern][i][1],
                             i))
             if self.skyPattern == 'Box9':
                 for i in range(9):
                     self.ax.add_patch(self.add_sky_diamond(
-                            self.offDefs[self.skyPattern][0][0],
-                            self.offDefs[self.skyPattern][0][1],
+                            self.offDefs[self.skyPattern][i][0],
+                            self.offDefs[self.skyPattern][i][1],
                             self.objFrames1*self.objFrames2+i))
 
     def draw_stat(self):
@@ -740,6 +756,9 @@ class Oopgui:
         # Extract the values from the JSON object and store it in
         # the proper member variables
         self.keckID = qstr['keckID'][0]
+        self.ddfname = qstr['ddfname'][0]
+        if '.ddf' not in self.ddfname:
+            self.ddfname = ''.join((self.ddfname, '.ddf'))
         self.imgMode = qstr['imgMode'][0]
         if self.imgMode == 'Disabled':
             self.mode = 'spec'
@@ -818,6 +837,12 @@ class Oopgui:
         # Redraw the figure based on the extracted values
         self.draw_fig()
         #self.fig.tight_layout()
+        # draw the arrow in the upper right corner
+        #quivx = self.xMax - 0.1*(self.xMax + abs(self.xMin))
+        #quivy = self.yMax - 0.1*(self.yMax + abs(self.yMin))
+        #a = self.ax.quiver(quivx, quivy, [0,-1], [1,0], units='inches',
+        #        pivot='tail', minlength=3)
+        #self.ax.quiverkey(a,.8,.8,2,'N',coordinates='figure')
         # Apply the grid for visual scale
         self.ax.grid()
 
@@ -862,6 +887,8 @@ class Oopgui:
 
         """
         out = ''
+        line1 = ''
+        line2 = ''
         # Determine the object portion of the dither pattern
         if 'Stare' == self.objPattern:
             line1 = ''.join(('\t\t\t<ditherPosition sky="false" xOff="',
@@ -870,100 +897,27 @@ class Oopgui:
                 str(self.initOffY+self.offDefs["Stare"][0][1]*self.objHgtY),
                 '" />\n'))
         elif 'Box4' == self.objPattern:
-            line1 = ''.join(('\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box4"][0][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box4"][0][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box4"][1][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box4"][1][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box4"][2][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box4"][2][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box4"][3][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box4"][3][1]*self.objHgtY),
-                '" />\n'))
+            for i in range(4):
+                line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
+                        str(self.initOffX+self.offDefs["Box4"][i][0]*self.objLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.offDefs["Box4"][i][1]*self.objHgtY),
+                        '" />\n'))
         elif 'Box5' == self.objPattern:
-            line1 = ''.join(('\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box5"][0][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box5"][0][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box5"][1][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box5"][1][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box5"][2][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box5"][2][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box5"][3][0]*self.objLenX), 
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box5"][3][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box5"][4][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box5"][4][1]*self.objHgtY),
-                '" />\n'))
+            for i in range(5):
+                line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
+                        str(self.initOffX+self.offDefs["Box5"][i][0]*self.objLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.offDefs["Box5"][i][1]*self.objHgtY),
+                        '" />\n'))
         elif 'Box9' == self.objPattern:
-            line1 = ''.join(('\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][0][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][0][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][1][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][1][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][2][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][2][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][3][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][3][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][4][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][4][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][5][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][5][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][6][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][6][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][7][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][7][1]*self.objHgtY),
-                '" />\n'))
-            line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
-                str(self.initOffX+self.offDefs["Box9"][8][0]*self.objLenX),
-                '" yOff="',
-                str(self.initOffY+self.offDefs["Box9"][8][1]*self.objHgtY),
-                '" />\n'))
+            for i in range(9):
+                line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="',
+                        str(self.initOffX+self.offDefs["Box9"][i][0]*self.objLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.offDefs["Box9"][i][1]*self.objHgtY),
+                        '" />\n'))
         elif 'User Defined' in self.objPattern:
-            line1 = ''
             for i in range(0, self.objFrames1*3, 3):
                 line1 = ''.join((line1, '\t\t\t<ditherPosition sky="false" xOff="', 
                         self.defs[i],'" yOff="', self.defs[i+1], '" />\n'))
@@ -980,100 +934,27 @@ class Oopgui:
                 str(self.initOffY+self.nodOffY+self.offDefs["Stare"][0][1]*self.skyHgtY),
                 '" />\n'))
         elif 'Box4' == self.skyPattern:
-            line2 = ''.join(('\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box4"][0][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box4"][0][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box4"][1][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box4"][1][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box4"][2][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box4"][2][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box4"][3][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box4"][3][1]*self.skyHgtY),
-                '" />\n'))
+            for i in range(4):
+                line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
+                        str(self.initOffX+self.nodOffX+self.offDefs["Box4"][i][0]*self.skyLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.nodOffY+self.offDefs["Box4"][i][1]*self.skyHgtY),
+                        '" />\n'))
         elif 'Box5' == self.skyPattern:
-            line2 = ''.join(('\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box5"][0][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box5"][0][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box5"][1][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box5"][1][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box5"][2][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box5"][2][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box5"][3][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box5"][3][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box5"][4][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box5"][4][1]*self.skyHgtY),
-                '" />\n'))
+            for i in range(5):
+                line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
+                        str(self.initOffX+self.nodOffX+self.offDefs["Box5"][i][0]*self.skyLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.nodOffY+self.offDefs["Box5"][i][1]*self.skyHgtY),
+                        '" />\n'))
         elif 'Box9' == self.skyPattern:
-            line2 = ''.join(('\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][0][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][0][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][1][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][1][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][2][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][2][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][3][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][3][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][4][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][4][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][5][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][5][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][6][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][6][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][7][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][7][1]*self.skyHgtY),
-                '" />\n'))
-            line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
-                str(self.initOffX+self.nodOffX+self.offDefs["Box9"][8][0]*self.skyLenX),
-                '" yOff="',
-                str(self.initOffY+self.nodOffY+self.offDefs["Box9"][8][1]*self.skyHgtY),
-                '" />\n'))
+            for i in range(9):
+                line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
+                        str(self.initOffX+self.nodOffX+self.offDefs["Box9"][i][0]*self.skyLenX),
+                        '" yOff="',
+                        str(self.initOffY+self.nodOffY+self.offDefs["Box9"][i][1]*self.skyHgtY),
+                        '" />\n'))
         elif 'User Defined' in self.skyPattern:
-            line2 = ''
             for i in range(self.objFrames1*3, (self.objFrames1+self.skyFrames1)*3, 3):
                 line2 = ''.join((line2, '\t\t\t<ditherPosition sky="true" xOff="',
                         self.defs[i],'" yOff="', self.defs[i+1], '" />\n'))
@@ -1089,7 +970,10 @@ class Oopgui:
         Save the current configuration as a DDF (XML) file
         locally
         """
-        with open(self.ddfname, 'w') as ddf:
+        if '.ddf' not in self.ddfname:
+            ''.join((self.ddfname, '.ddf'))
+        ddfdir = ''.join(('docs/',self.ddfname))
+        with open(ddfdir, 'w') as ddf:
             ddf.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             ddf.write(''.join(('<ddf version="1.0" type="', self.targType,'">\n')))
             self.dataset = self.dataset.replace('<','&lt;').replace('>','&gt;')
@@ -1167,7 +1051,7 @@ class Oopgui:
             ddf.write(''.join(('\t\t\t<reductionParameter ',
                     'name="Mosaic Dithered Frames" instrument="spec" ',
                     'doStep="true" filechoice="Not Applicable" />\n')))
-            ddf.write('    </reduction>\n')
+            ddf.write('\t\t</reduction>\n')
             ddf.write('\t</dataset>\n')
             ddf.write('</ddf>\n')
         print('File saved')
@@ -1176,18 +1060,44 @@ class Oopgui:
     def save_to_db(self, qry):
         """
         Save the current configuration to the database
-        """
 
-        piID = ''.join(('pi',qry['keckID'][0]))
+        @type qry: dictionary
+        @param qry: list of user input values from interface
+        """
+        piID = ''
+        URL = ''.join((self.baseurl,'cmd=getScheduleByUser&obsid=',
+                qry['keckID'],'&type=observer'))
+        res = url.urlopen(URL).read().decode()
+        if res == '':
+            URL = URL.replace('observer','pi')
+            res = url.urlopen(URL).read().decode()
+            piID = qry['keckID']
+        try:
+            progname = res['ProjCode']
+        except KeyError:
+            print('ProjCode was not found in result')
+        if 'observer' in URL:
+            semester = get_semester()
+            semid = ''.join((semester, '_', progname))
+        URL = ''.join((self.baseurl,'cmd=getPI&semd=',semid))
+        res = url.urlopen(URL).read().decode()
+        if piID == '':
+            try:
+                piID = res['Principal']
+            except KeyError:
+                print('No PI ID to extract')
+                exit()
+        piID = ''.join(('pi',piID))
         mc = dcm.db_conn_mongo('osiris')
         mc.db_connect()
         mc.db = mc.client[mc.database]
-        mc.col = mc.db[piID]
+        mc.col = mc.db['instrConfigs']
         for key in qry:
             qry[key] = qry[key][0]
-        qry['progname']='X123'
-        qry['semester']='2018A'
-        qry['progtitl']='My Testing Program'
+        qry['piID'] = piID
+        qry['progname'] = progname
+        qry['semester'] = semester
+        qry['progtitl'] = 'My Testing Program'
         try:
             mc.col.insert(qry)
         except:
@@ -1197,10 +1107,35 @@ class Oopgui:
         finally:
             mc.db_close()
 
+    def send_to_queue(self):
+        """
+        Moves the file to the directory set in queueDir
+        """
+        if '.ddf' not in self.ddfname: ''.join((self.ddfname, '.ddf'))
+        try:
+            sh.copy(self.ddfname, self.queueDir)
+        except:
+            print('File was not transferred')
+
+    def load_from_db(self, qstr):
+        """
+        """
+        keckid = qstr.get('keckid')
+        sem = qstr.get('semester')
+        projcode = qstr.get('projcode')
+
+
+    def get_semester(self):
+        today = date.today()
+        sem = str(today.year)
+        if today.month > 7 or today.month < 2: sem += 'B'
+        else: sem += 'A'
+        return sem
+
 def SpecFilters():
     """
-    This function returns the filter specifications for all 
-    the spectrometer filters as a dictionary. Its keys 
+    This function returns the filter specifications for all
+    the spectrometer filters as a dictionary. Its keys
     are the different filter names that return a dictionary
     of values for the specified filter.
 
