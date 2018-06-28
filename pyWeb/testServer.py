@@ -79,7 +79,6 @@ class TestAppHandler (EasyHTTPHandler):
     def save_to_file(self, req, qstr):
         self.oop.update(qstr)
         if self.oop.save_to_file():
-            print('INSIDE POSITIVE RESPONSE')
             furl = ''.join((BASEURL, self.oop.ddfname))
             resp = {'furl':furl,'ddf':self.oop.ddfname}
             return self.response(json.dumps(resp), self.PlainTextType)
@@ -94,6 +93,16 @@ class TestAppHandler (EasyHTTPHandler):
         self.oop.send_to_queue()
         return self.response(
                 json.dumps("Config moved to queue"),
+                self.PlainTextType
+        )
+
+    def remove_file(self, req, qstr):
+        fpath = qstr['ddf'][0]
+        fpath = ''.join(('docs/', fpath))
+        print(fpath)
+        os.remove(fpath)
+        return self.response(
+                json.dumps('file remove'),
                 self.PlainTextType
         )
 

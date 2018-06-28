@@ -32,19 +32,27 @@ function Oopgui(){
 
     self.setDDF = function() {
         var fname = prompt('Please enter the file name: ', 'default.ddf');
-        El('ddfname').innerHTML = fname;
+        if (fname){
+            if (fname.indexOf(".ddf") === -1) fname += ".ddf";
+            El('ddfname').innerHTML = fname;
+        }
         return fname;
     };
 
     self.saveDDF = function() {
         function callback(data){
+            function callbackagain(resp){
+                console.log(resp);
+            }
             console.log("In the callback");
             var link = document.createElement('a');
             link.href = data['furl'];
-            link.download = data['ddfname'];
+            link.download = data['ddf'];
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            //if(link===null) ajaxPost('remove_file', data, callbackagain);
+            //else console.log('Never got into delete');
         }
         fname = El('ddfname');
         fname.innerHTML = self.setDDF();
@@ -575,6 +583,8 @@ function Oopgui(){
         El('imgResult').src='drawgui?'+qry;
         //ajaxCall ('drawgui', params, callback);
     };
+
+    El('imgResult').src='drawgui?'+formatGET(self.createQstr());
 
     El('updateBt').onclick = self.update;
     El('fileList').onclick = self.showFile;
