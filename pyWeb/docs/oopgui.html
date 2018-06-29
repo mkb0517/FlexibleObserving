@@ -25,8 +25,8 @@
                     <input id='file-input' type="file" style="display:none;" />
                     <button id="saveBtn">Save DDF</button>
                     <button id='saveDB'>Save to DB</button>
-                    <button onclick="makeCDF()">Create Calibration CDFs</button>
-                    <button onclick="clear()">Clear Fields</button>
+                    <button id="makeCDF" style:'display:none'>Create Calibration CDFs</button>
+                    <button id="clear">Clear Fields</button>
                 </div>
             <button id=queueList class=dropbtn>Queue</button>
                 <div id="queue" class="dropdown-content">
@@ -34,6 +34,7 @@
                     <button onclick="sendQueue()">Send to Queue</button>
                 </div>
             <select id='pcodelist'>
+                <option value="" selected>Select...</option>
             </select>
             <button id='ddfname' style='float:right;'>default.ddf</button>
             </div>

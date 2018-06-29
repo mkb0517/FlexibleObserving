@@ -66,7 +66,7 @@ function Oopgui(){
         }
 
         var params = self.createQstr();
-        ajaxCall('save_to_db', params, callback);
+        ajaxPost('save_to_db', params, callback);
     };
 
     self.setCookie = function(key, val, exdays){
@@ -97,13 +97,6 @@ function Oopgui(){
             if (name == 'keckID') return value;
         }
         return '';
-    };
-
-    self.getProjCodes = function(){
-        function callback(codes){
-        }
-        var keckid = self.getKeckID();
-
     };
 
     self.showFile = function(){
@@ -533,6 +526,7 @@ function Oopgui(){
 
         var params = {
             'keckID':self.checkCookie(),
+            'semid':El('pcodelist').value,
             'ddfname':El('ddfname').innerHTML,
             'imgMode':El('imgMode').value,
             'dataset':escape(El('dataset').value),
@@ -581,10 +575,33 @@ function Oopgui(){
 
         var qry = formatGET(params);
         El('imgResult').src='drawgui?'+qry;
-        //ajaxCall ('drawgui', params, callback);
+        //ajaxPost ('drawgui', params, callback);
+    };
+
+    self.getPCodes = function() {
+        function callback(data){
+            var select = El('pcodelist');
+            while(select.hasChildNodes()){
+                select.removeChild(select.lastChild);
+            }
+            codes = data['keckid'];
+            console.log(codes);
+            sem = data['sem'];
+            for (var code in codes){
+                semid = sem + "_" + codes[code];
+                var option = document.createElement('option');
+                option.value = semid;
+                option.innerHTML = semid;
+                select.appendChild(option);
+            }
+        }
+        params = {'keckID':self.checkCookie()};
+        console.log(params);
+        ajaxPost('getPCodes',params, callback);
     };
 
     El('imgResult').src='drawgui?'+formatGET(self.createQstr());
+    self.getPCodes();
 
     El('updateBt').onclick = self.update;
     El('fileList').onclick = self.showFile;

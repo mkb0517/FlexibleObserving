@@ -104,7 +104,17 @@ class TestAppHandler (EasyHTTPHandler):
         return self.response(
                 json.dumps('file remove'),
                 self.PlainTextType
-        )
+            )
+
+    def getPCodes(self, req, qstr):
+        keckid = qstr['keckID'][0]
+        codes = self.oop.get_p_codes(keckid)
+        sem = self.oop.get_semester();
+        res = {'keckid':codes, 'sem':sem}
+        return self.response(
+                json.dumps(res),
+                self.PlainTextType
+            )
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import urllib.request as url
 import db_conn_mongo as dcm
+import json
 from datetime import date
 from random import random
 
@@ -110,7 +111,8 @@ class Oopgui:
         self.boxHeight = 1.28
         self.filters = SpecFilters()
         self.colorList = self.gen_color(1)
-        self.baseurl = 'https://www.keck.hawaii.edu/software/db_api/telSched.php?'
+        self.schedurl = 'https://www.keck.hawaii.edu/software/db_api/telSchedule.php?'
+        self.propurl = 'https://www.keck.hawaii.edu/software/db_api/proposalsAPI.php?'
 
         # Observing Parameters
         self.oriX = 0.0
@@ -1057,6 +1059,18 @@ class Oopgui:
         print('File saved')
         return True
 
+    def get_p_codes(self, keckid):
+        URL = ''.join((self.schedurl,'cmd=getScheduleByUser&obsid=',
+                keckid,'&type=observer'))
+        res = url.urlopen(URL).read().decode('utf-8')
+        res = json.loads(res)
+        codes = []
+        for prog in res:
+            pcode = prog['ProjCode']
+            if pcode not in codes:
+                codes.append(pcode)
+        return codes
+
     def save_to_db(self, qry):
         """
         Save the current configuration to the database
@@ -1065,29 +1079,18 @@ class Oopgui:
         @param qry: list of user input values from interface
         """
         piID = ''
-        URL = ''.join((self.baseurl,'cmd=getScheduleByUser&obsid=',
-                qry['keckID'],'&type=observer'))
+        semid = qry['semid'][0]
+        URL = ''.join((self.schedurl,'cmd=getPI&semid=',
+                semid))
         res = url.urlopen(URL).read().decode()
-        if res == '':
-            URL = URL.replace('observer','pi')
-            res = url.urlopen(URL).read().decode()
-            piID = qry['keckID']
-        try:
-            progname = res['ProjCode']
-        except KeyError:
-            print('ProjCode was not found in result')
-        if 'observer' in URL:
-            semester = get_semester()
-            semid = ''.join((semester, '_', progname))
-        URL = ''.join((self.baseurl,'cmd=getPI&semd=',semid))
+        res = json.loads(res)
+        piID = res[0]['Principal']
+        URL = ''.join((self.propurl, 'ktn=', semid,
+                '&cmd=getTitle'))
         res = url.urlopen(URL).read().decode()
-        if piID == '':
-            try:
-                piID = res['Principal']
-            except KeyError:
-                print('No PI ID to extract')
-                exit()
-        piID = ''.join(('pi',piID))
+        title = res
+        semester, progname = semid.split('_')
+
         mc = dcm.db_conn_mongo('osiris')
         mc.db_connect()
         mc.db = mc.client[mc.database]
@@ -1097,7 +1100,7 @@ class Oopgui:
         qry['piID'] = piID
         qry['progname'] = progname
         qry['semester'] = semester
-        qry['progtitl'] = 'My Testing Program'
+        qry['progtitl'] = title
         try:
             mc.col.insert(qry)
         except:
